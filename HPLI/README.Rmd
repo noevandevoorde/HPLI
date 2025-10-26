@@ -1,0 +1,76 @@
+---
+title: "An HPLI ShinyApp"
+subtitle:  "Harmonised Pesticide Load Indicator (HPLI)"
+author:
+  - 'Noé Vandevoorde (noe.vandevoorde@uclouvain.be)'
+  - 'Sytra, Earth & Life Institute—Agronomy, UCLouvain (Louvain-la-Neuve, Belgium)'
+date: "`r format(Sys.Date(), '%d %B %Y', usetz = FALSE)`"
+output:
+  html_document
+---
+
+## Overview
+
+This Shiny application provides an interactive dashboard for exploring visualisations of the **Harmonised Pesticide Load Indicator (HPLI)**, as defined in [Vandevoorde *et al* (2026)](); see [Vandevoorde (2025)]() for more details. It allows users to view and compare substances and toxicity metrics through graphical outputs such as rose plots.
+
+## Project Structure
+
+```text
+HPLI_ShinyApp/
+├── README.Rmd
+├── app.R
+├── data/
+│   └── data.xlsx
+└── R/
+    ├── prep_utils.R
+    ├── ui.R
+    └── server.R
+```
+
+## File descriptions
+
+### app.R
+
+This is the main entry point of the app. It:
+
+- Loads required R packages.
+- Sources all scripts in the `R/` folder.
+- Launches the app using `shinyApp(ui, server)`.
+
+### R/prep_utils.R
+
+This file handles data import, preprocessing, constants and functions used throughout the app.
+
+It includes:
+
+- Defining styles (color palettes)
+- Defining constants and settings
+- Define plotting and utility functions
+- Loading Excel files from the `data/` folder  
+- Creating preprocessed data objects for the app
+
+### R/ui.R
+
+Defines the user interface of the dashboard, using `shinydashboard` components.
+
+### R/server.R
+
+Contains the reactive logic (filtering data, generating plots and outputs rendered in the UI).
+
+### data/
+
+Contains input data and definition files used by the app:
+
+- `data.xlsx`: dataset of pesticide metrics and weighted load scores.
+
+Metric values (*i.e.* toxicities and environmental fate metrics) come from the [PPDB](https://sitem.herts.ac.uk/aeru/ppdb/), last updated in May 2024.
+
+## Requirements
+
+**R version:** ≥ 4.2  
+**Packages:** `tidyverse`, `shiny`, `shinydashboard`
+
+## Notes for developers
+
+- All paths are relative to the project root (`HPLI_ShinyApp/`).
+- `prep_utils.R` is sourced before the UI and server, so all variables and functions defined there are globally available.
