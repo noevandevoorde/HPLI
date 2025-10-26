@@ -4,6 +4,8 @@
 # octobre 2025
 
 
+library(shiny)
+
 #### Packages ##################################################################
 
 load_packages <- function(pkgs) {
