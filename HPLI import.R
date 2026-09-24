@@ -1027,7 +1027,11 @@ build_output_notice <- function(contents, redistribution) {
         "\"HPLI methodology.md\", in the same repository.",
         "Licensed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/."
       ),
-      "Vandevoorde, N. et al. (2025). Environmental Research Letters. https://doi.org/10.1088/1748-9326/ae269b",
+      paste(
+        "Vandevoorde, N., Kudsk, P., Agnan, Y. and Baret, P. V. (2025). Five methodological updates",
+        "of the Danish Pesticide Load Indicator to support EU-wide pesticide risk reduction policies.",
+        "Environmental Research Letters, 20, 124070. https://doi.org/10.1088/1748-9326/ae269b"
+      ),
       "Vandevoorde, N. (2025). Three tools for the reduction of pesticide impacts. UCLouvain. https://hdl.handle.net/2078.5/264116",
       "HPLI R implementation. https://github.com/noevandevoorde/HPLI",
       paste(

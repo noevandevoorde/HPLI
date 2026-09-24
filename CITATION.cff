@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the article describing the indicator, and this repository for the implementation."
+title: "HPLI: an R implementation of the Harmonised Pesticide Load Indicator"
+version: 0.1.0
+date-released: 2026-09-24
+license: GPL-3.0-or-later
+repository-code: "https://github.com/noevandevoorde/HPLI"
+authors:
+  - family-names: Vandevoorde
+    given-names: Noé
+    email: noe.vandevoorde@uclouvain.be
+    affiliation: UCLouvain
+keywords:
+  - pesticide
+  - hazard indicator
+  - pesticide load
+  - PPDB
+preferred-citation:
+  type: article
+  title: "Five methodological updates of the Danish Pesticide Load Indicator to support EU-wide pesticide risk reduction policies"
+  authors:
+    - family-names: Vandevoorde
+      given-names: Noé
+    - family-names: Kudsk
+      given-names: Per
+    - family-names: Agnan
+      given-names: Yannick
+    - family-names: Baret
+      given-names: Philippe V.
+  journal: "Environmental Research Letters"
+  volume: 20
+  start: 124070
+  year: 2025
+  doi: 10.1088/1748-9326/ae269b
+references:
+  - type: thesis
+    title: "Three tools for the reduction of pesticide impacts"
+    authors:
+      - family-names: Vandevoorde
+        given-names: Noé
+    year: 2025
+    institution:
+      name: UCLouvain
+    thesis-type: "Doctoral dissertation"
+    url: "https://hdl.handle.net/2078.5/264116"

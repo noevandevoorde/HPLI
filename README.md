@@ -157,9 +157,9 @@ An independent reimplementation should expect exactly these differences, and no 
 
 ## Citing
 
-Please cite the article for the indicator, and this repository for the implementation:
+Please cite the article for the indicator, and this repository for the implementation (GitHub's "Cite this repository" button reads the same references from `CITATION.cff`):
 
-> Vandevoorde, N. et al. (2025). *Environmental Research Letters*. https://doi.org/10.1088/1748-9326/ae269b
+> Vandevoorde, N., Kudsk, P., Agnan, Y. and Baret, P. V. (2025). Five methodological updates of the Danish Pesticide Load Indicator to support EU-wide pesticide risk reduction policies. *Environmental Research Letters*, 20, 124070. https://doi.org/10.1088/1748-9326/ae269b
 >
 > Vandevoorde, N. (2026). *HPLI: an R implementation of the Harmonised Pesticide Load Indicator* (version 0.1.0) [Computer software]. UCLouvain. https://github.com/noevandevoorde/HPLI
 
