@@ -103,9 +103,9 @@ Note that the workbook must not be open in Excel while R reads it; Excel holds a
 
 `HPLI weights.R` writes `HPLI_weights.xlsx` (a notice, the weights, and their own run log).
 
-No output workbook is included in this version of the repository, and all of them are listed in `.gitignore`. A reference output is to be published with a later version, computed on a PPDB export under a valid licence.
+No output workbook is included in this version of the repository, and all of them are listed in `.gitignore`.
 
-**On sharing the results.** Only the publishable workbook is meant to leave your machine. Each normalisation is piecewise linear and monotone over published thresholds, so a per-metric score converts back into the PPDB value it was computed from: the full workbook is licensed PPDB-derived material whatever `export_raw_ppdb_values` says. The publishable one keeps the aggregated scores and the data quality, and is still PPDB-derived — see [License](#license) and `HPLI methodology.md`, section "PPDB licensing and what may be shared".
+**On sharing the results.** Only the publishable workbook is meant to leave your machine. The full workbook is licensed PPDB-derived material. See [License](#license) and `HPLI methodology.md`, section "PPDB licensing and what may be shared".
 
 ## Settings
 
@@ -130,15 +130,13 @@ All in section 1 of `HPLI score.R`, and recorded in `Run_log` for every run.
 
 ## Adapting to another PPDB export
 
-The column maps at the top of `HPLI import.R` translate each export header into the internal name the code uses. They were written against the 3 May 2024 export, whose headers reflect the pipeline that produced it — some fields spell out spaces and brackets, others use dots, within the very same sheet — which is why each column is mapped individually rather than by a blanket rule.
+The column maps at the top of `HPLI import.R` translate each PPDB export header into the internal name the code uses. They were written against the 3 May 2024 PPDB export, whose headers reflect the pipeline that produced it — some fields spell out spaces and brackets, others use dots, within the very same sheet — which is why each column is mapped individually rather than by a blanket rule.
 
-If a run stops on a missing column, or a metric comes back empty for every substance, the headers have moved. `HPLI import.R` documents the procedure in place: print the real headers, edit the right-hand side of the corresponding map entry, and — this is the important part — **compare the result against a reference run before trusting it**, since a silently mis-mapped column is far more likely than a hard error. No reference output ships with this version; once one does, it will carry the HPLI and compartment scores, not the per-metric ones: a compartment that moves points to the maps feeding it, and `Data_quality` narrows it down to the metric whose status or bound changed.
-
-Two mappings there needed a substantive check rather than a mechanical rename and are worth re-verifying against any other export: the acute-algae column, and the temperate aquatic invertebrate and fish columns, which carry *no* suffix in this export even though their comparator and quality-band siblings spell out `- TEMPERATE`.
+If a run stops on a missing column, or a metric comes back empty for every substance, the headers have moved. `HPLI import.R` documents the procedure in place: print the real headers and edit the right-hand side of the corresponding map entry (additionnaly compare the result against a reference run before trusting it, since a silently mis-mapped column is far more likely than a hard error).
 
 ## Adapting to another metric set
 
-A different version of the indicator — the 27-metric Walloon set, or one adapted to another country — is a sibling `HPLI parameters.R`, not a fork of the calculation. Everything else iterates over whatever the active definition contains.
+A different version of the indicator — the 27-metric Walloon set, or one adapted to another region/country — is a sibling `HPLI parameters.R`, not a fork of the calculation. Everything else iterates over whatever the active definition contains.
 
 Two things to know before starting: a version needs a sibling import file if its extra metrics draw on PPDB columns the current maps do not cover; and **a version must compute its own weights**, since the inverse-correlation weighting is defined within a compartment and over the metrics that compartment contains, so adding or removing one metric moves every other weight in that compartment. `HPLI methodology.md`, section "Adapting the indicator to another metric set", sets this out — including why the metric list itself depends on which substances the indicator is meant to cover.
 
@@ -146,14 +144,12 @@ Two things to know before starting: a version needs a sibling import file if its
 
 - Objects in `snake_case`; functions lead with a verb (`compute_`, `build_`, `parse_`, `load_`, `score_`, `draw_`). A function that *is* the value it returns keeps a noun — `persistence_coefficient()`, `hazard_direction()`, `high_hazard_value()`.
 - Comments follow `roxygen2` (`#'`) wherever there is an object to document — a file header, a function, a data object. Plain `#` elsewhere. The `####` banners feed the RStudio outline.
-- Scripts cross-reference the methodology **by section title**, never by number, so that renumbering the document cannot silently break a pointer.
 - The *what* and *how* live in the scripts; the *why* lives in `HPLI methodology.md`.
+- Scripts cross-reference the methodology **by section title**.
 
 ## Known divergences from the published values
 
-Three, all deliberate and all documented in `CHANGELOG.md` and the methodology. In short: the persistence coefficient is applied to the normalised score rather than to the raw value, which changes the two chronic aquatic metrics; correlation-based weights are computed over the active metric set only; and the "stable in water" reading is excluded from the weight calculation while kept for scoring.
-
-An independent reimplementation should expect exactly these differences, and no others from these causes.
+This code presents three divergences from the published values in the *ERL* paper, all deliberate and all documented in `CHANGELOG.md` and the methodology. In short: the persistence coefficient is applied to the normalised score rather than to the raw value, which changes the two chronic aquatic metrics; correlation-based weights are computed over the active metric set only; and the "stable in water" reading is excluded from the weight calculation while kept for scoring.
 
 ## Citing
 
