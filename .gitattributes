@@ -1,0 +1,18 @@
+# Line endings are LF everywhere: in the repository and in every working
+# copy, Windows included (R, RStudio and current editors all read LF).
+# Without this, a file saved on Windows and one saved on Linux differ on
+# every line.
+* text=auto eol=lf
+*.R text
+*.md text
+*.csv text
+*.Rproj text
+*.gitignore text
+
+# Binary: never touched by end-of-line conversion.
+*.xlsx binary
+*.xls binary
+*.accdb binary
+*.mdb binary
+*.png binary
+*.pdf binary

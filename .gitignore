@@ -1,0 +1,66 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Machine-specific settings
+# ──────────────────────────────────────────────────────────────────────────
+# The template "local_paths.example.R" IS tracked; the real file is not.
+local_paths.R
+
+# ──────────────────────────────────────────────────────────────────────────
+# Licensed AERU PPDB / BPDB material - never committed
+# ──────────────────────────────────────────────────────────────────────────
+# See "HPLI methodology.md", section "PPDB licensing and what may be
+# shared". Covers a copy of the four-file export, or a database dump, left
+# inside the project folder.
+General.xlsx
+Fate.xlsx
+Ecotox.xlsx
+Human.xlsx
+PPDB-*
+BPDB-*
+*.accdb
+*.mdb
+
+# Output workbooks, all derived from the PPDB. The full results workbook
+# stays local for good: its per-metric scores can be converted back into
+# PPDB values. The publishable results and the weights are not included in
+# this version either; a reference output is to be published with a later
+# one, computed on an export under a valid licence.
+HPLI_results_full.xlsx
+HPLI_results.xlsx
+HPLI_weights.xlsx
+
+# ──────────────────────────────────────────────────────────────────────────
+# IDE project files and local working notes
+# ──────────────────────────────────────────────────────────────────────────
+# Working notes kept in this folder are excluded locally, in
+# .git/info/exclude, so that they are not even named here.
+*.Rproj
+
+# ──────────────────────────────────────────────────────────────────────────
+# Generated renders of the documentation
+# ──────────────────────────────────────────────────────────────────────────
+# The markdown source is what is versioned; any HTML/PDF render of it is
+# regenerated on demand.
+*.html
+*-methodology.pdf
+
+# ──────────────────────────────────────────────────────────────────────────
+# R session and IDE state
+# ──────────────────────────────────────────────────────────────────────────
+.Rhistory
+.Rapp.history
+.RData
+.Rdata
+*.Rdata
+.Ruserdata
+.Rproj.user/
+
+# Backup copies left by editors or by scripted edits.
+*.bak
+*~
+
+# ──────────────────────────────────────────────────────────────────────────
+# OS and Office cruft
+# ──────────────────────────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store
+~$*
