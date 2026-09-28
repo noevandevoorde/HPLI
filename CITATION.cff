@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite the article describing the indicator, and this repository for the implementation."
 title: "HPLI: an R implementation of the Harmonised Pesticide Load Indicator"
-version: 0.1.0
-date-released: 2026-09-24
+version: 0.1.1
+date-released: 2026-09-28
 license: GPL-3.0-or-later
 repository-code: "https://github.com/noevandevoorde/HPLI"
 authors:

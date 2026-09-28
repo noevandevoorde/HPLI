@@ -23,17 +23,18 @@
 #' pairwise, so a weight reflects observed data only.
 #'
 #' @section Input:
-#' A four-file AERU PPDB export: licensed material, not distributed with
+#' An AERU PPDB export workbook: licensed material, not distributed with
 #' this code - see "HPLI methodology.md", section "PPDB licensing and what
 #' may be shared".
 #'
 #' @section Settings:
 #' Set in section 1 below.
-#' * `ppdb_export_dir` - folder holding the export (General.xlsx,
-#'   Fate.xlsx, Ecotox.xlsx, Human.xlsx). Not set here: it is read from the
-#'   untracked "local_paths.R", since it differs from one machine to the
-#'   next. A correlation needs many substances to run over, so this is
-#'   always a full export, never a single-substance extract.
+#' * `ppdb_export_file`, `ppdb_export_date` - the PPDB export, as the zip
+#'   archive AERU delivers or the workbook it holds, and optionally its
+#'   date when the file name does not give it. Not set here: both are read from the untracked "local_paths.R",
+#'   since they differ from one machine to the next. A correlation needs
+#'   many substances to run over, so this is always a full export, never an
+#'   extract of a few substances.
 #' * `range_policy` - how a PPDB range value (e.g. "10-20") is resolved
 #'   into the single number a correlation needs: "worst_case" (default) or
 #'   "mean". Same meaning as in "HPLI score.R", but a separate setting, so
@@ -47,14 +48,18 @@
 #' * `Weights` - one row per metric: `compartment`, `metric`, `weight`
 #'   (share of the whole indicator; sums to 1 across all metrics) and
 #'   `weight_within_compartment` (sums to 1 within each compartment).
-#' * `Run_log` - computation timestamp, the export's folder name and the
-#'   checksums of its four workbooks (no local path), `range_policy`,
-#'   number of substances read, metric count, metric list.
+#' * `Run_log` - computation timestamp, the export's file name, date and
+#'   checksum (no local path), `range_policy`, number of substances read,
+#'   metric count, metric list.
 #'
-#' "HPLI score.R" loads this file when its `weight_source` setting is
-#' "spearman_ppdb", refuses it unless the metrics of its `Weights` sheet
-#' match the active indicator definition exactly, and copies its `Run_log`
-#' into its own with a "weights_" prefix.
+#' "HPLI score.R", under its default `weight_source` "weights_file", loads
+#' this file if it exists and otherwise "HPLI_weights_precomputed.xlsx",
+#' shipped with the code: the output of this script on the PPDB export of
+#' 2024-05-03, renamed so that running the script never overwrites it. The
+#' file is refused unless the metrics of its `Weights` sheet match the
+#' active indicator definition exactly, a warning is raised if its
+#' `ppdb_export_date` differs from the scored export's, and its `Run_log`
+#' is copied into the scoring run's own with a "weights_" prefix.
 #'
 #' @section Method and rationale:
 #' Vandevoorde et al. (2025); "HPLI methodology.md", section "Weight
@@ -76,12 +81,17 @@ source("HPLI import.R")
 # 1. Settings                                                            ####
 # ──────────────────────────────────────────────────────────────────────────
 
-# `ppdb_export_dir` comes from "local_paths.R" (untracked; copy
+# `ppdb_export_file` comes from "local_paths.R" (untracked; copy
 # "local_paths.example.R"), which is read here and must define it. A
-# missing file, a missing setting or a folder that does not exist each stop
-# the run with an explicit message; the folder in use is echoed to the
-# console. See load_local_paths() in "HPLI import.R".
-load_local_paths(require_dirs = "ppdb_export_dir")
+# missing file, a missing setting or a file that does not exist each stop
+# the run with an explicit message; the file in use is echoed to the
+# console. A zip is read without being unpacked in place
+# (extract_ppdb_workbook()). See load_local_paths() in "HPLI import.R". The export's date
+# is read from the file name, or from the optional `ppdb_export_date` of
+# "local_paths.R" (resolve_ppdb_export_date()).
+load_local_paths(require_files = "ppdb_export_file", optional_settings = "ppdb_export_date")
+ppdb_workbook    <- extract_ppdb_workbook(ppdb_export_file)
+ppdb_export_date <- resolve_ppdb_export_date(ppdb_workbook, get0("ppdb_export_date", envir = globalenv()))
 
 range_policy <- "worst_case"
 
@@ -96,7 +106,7 @@ weights_file <- "HPLI_weights.xlsx"
 # kept. The "stable in water -> 300 days" fill-in is not: see
 # "HPLI methodology.md", section "Weight calculation".
 raw_metrics <- load_ppdb_raw_metrics(
-  ppdb_export_dir = ppdb_export_dir,
+  ppdb_workbook = ppdb_workbook,
   range_policy = range_policy,
   water_dt50_stable_assumption = FALSE
 )
@@ -206,13 +216,13 @@ weights_out <- weights_within |>
 # ──────────────────────────────────────────────────────────────────────────
 
 # `Run_log` dates a given set of weights, and "HPLI score.R" copies it into
-# its own run log. No local path: the export is identified by its folder
-# name and the checksums of its four workbooks (compute_ppdb_fingerprint(),
-# "HPLI import.R"), so a scoring run can tell whether its weights came from
-# the same export as its scores.
+# its own run log. No local path: the export is identified by its file
+# name, date and checksum (compute_ppdb_fingerprint(), "HPLI import.R"), so
+# a scoring run can tell whether its weights came from the same export as
+# its scores.
 run_log <- bind_rows(
   tibble(setting = "computed_at", value = format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
-  compute_ppdb_fingerprint(ppdb_export_dir),
+  compute_ppdb_fingerprint(ppdb_workbook, ppdb_export_date),
   tibble(
     setting = c("range_policy", "n_substances_read", "n_metrics", "metrics"),
     value = c(

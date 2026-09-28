@@ -25,38 +25,38 @@ install.packages(c(
 ))
 ```
 
-**A PPDB export.** The Pesticide Properties DataBase is a licensed product of the AERU at the University of Hertfordshire. **It is not distributed with this code**, and you need your own access to it. The scripts expect an export laid out as four workbooks in one folder:
-
-```
-General.xlsx    Fate.xlsx    Ecotox.xlsx    Human.xlsx
-```
+**A PPDB export.** The Pesticide Properties DataBase is a licensed product of the AERU at the University of Hertfordshire. **It is not distributed with this code**, and you need your own access to it. The scripts read the export workbook as AERU delivers it (`PPDB-<licensee>-YY-MM-DD.xlsx`), either straight from its zip archive or unzipped.
 
 This code was written against the export of **3 May 2024**, which is also the snapshot behind every figure quoted in the documentation. The database is revised continuously — properties and quality flags, not only new substances — so a more recent export will not reproduce those figures exactly, and its column headers may differ (see [Adapting to another PPDB export](#adapting-to-another-ppdb-export)).
 
 ## Setup
 
-Copy the settings template and fill in the path to your own export:
+Put your export in a `PPDB/` folder inside this one (listed in `.gitignore`, so it is never committed), copy the settings template and fill in the path to the export:
 
 ```r
 file.copy("local_paths.example.R", "local_paths.R")
 # then edit local_paths.R:
-#   ppdb_export_dir <- "C:/path/to/your/PPDB"
+#   ppdb_export_file <- "PPDB/PPDB-<licensee>-24-05-03.zip"
 ```
 
-`local_paths.R` is listed in `.gitignore` and is never committed, so a working local path stays local. It holds **input locations only**; each script's own output paths are settings of that script.
+Keeping the export zipped is recommended: the scripts extract the workbook to a temporary folder, so the source file is never opened, nor re-saved, by a spreadsheet program.
 
-If it is missing, if `ppdb_export_dir` is absent from it, or if the folder does not exist, the run stops with a message naming the problem. On success the folder in use is echoed to the console, so a run is never ambiguous about which data it read.
+The export's date is read from the workbook's file name. If it does not end in `-YY-MM-DD.xlsx`, set the date as well, e.g. `ppdb_export_date <- "2024-05-03"`.
+
+`local_paths.R` is listed in `.gitignore` and is never committed, so a working local path stays local. It holds **input locations only**, and what describes them; each script's own output paths are settings of that script.
+
+If it is missing, if `ppdb_export_file` is absent from it, if the file does not exist, or if no date can be found, the run stops with a message naming the problem. On success the file in use is echoed to the console, so a run is never ambiguous about which data it read.
 
 ## Running
 
 Set the working directory to this folder — the scripts source each other by relative path — and run:
 
 ```r
-source("HPLI weights.R")   # optional: recompute weights from the PPDB
+source("HPLI weights.R")   # optional: compute weights from your own export
 source("HPLI score.R")     # the main run
 ```
 
-`HPLI score.R` sources `HPLI parameters.R` and `HPLI import.R` itself. It uses the published table-1 weights by default, so `HPLI weights.R` is only needed if you want weights recomputed from your own export (see `weight_source` below).
+`HPLI score.R` sources `HPLI parameters.R` and `HPLI import.R` itself. By default it uses the weights computed by `HPLI weights.R`: `HPLI_weights.xlsx` if you have run it, otherwise `HPLI_weights_precomputed.xlsx`, shipped with the code and computed on the PPDB export of 3 May 2024. A warning is raised if the weights were computed on an export of a different date than the one being scored. The weights published in table 1 of the article remain available (see `weight_source` below).
 
 To plot a substance from a saved run, load the full results workbook (see [Output](#output)):
 
@@ -75,10 +75,11 @@ Note that the workbook must not be open in Excel while R reads it; Excel holds a
 
 | File | Role |
 |---|---|
-| `HPLI parameters.R` | The indicator's definition: metrics, normalisation thresholds, compartments, default weights. **This is the file a different HPLI version replaces.** |
+| `HPLI parameters.R` | The indicator's definition: metrics, normalisation thresholds, compartments, published table-1 weights. **This is the file a different HPLI version replaces.** |
 | `HPLI import.R` | Reads and completes the metrics from a PPDB export. Shared by the scoring and the weighting, so a metric is derived identically either way. |
 | `HPLI score.R` | Settings, scoring, persistence coefficient, aggregation, output. The main entry point. |
 | `HPLI weights.R` | Inverse-correlation weights computed from the export. |
+| `HPLI_weights_precomputed.xlsx` | The weights `HPLI weights.R` computes on the PPDB export of 3 May 2024; used by default when you have not computed your own. |
 | `HPLI visualisation.R` | Per-substance rose diagrams, from a saved full results workbook. Sources nothing and needs no PPDB access. |
 | `local_paths.example.R` | Template for the untracked `local_paths.R`. |
 | `HPLI score - natural inert substances.csv` | Hand-verified list of chemically inert substances. Optional; without it every substance is treated precautionarily. |
@@ -99,11 +100,11 @@ Note that the workbook must not be open in Excel while R reads it; Excel holds a
 | `HPLI_results` | One row per substance: the HPLI, the four compartment scores, a compact data-quality summary, and the share of the score attributable to values that were not measured. In the full workbook only, each metric's normalised score. |
 | `HPLI_parameters` | The indicator definition this run actually used — including which weights. |
 | `Data_quality` | One row per substance and metric: what happened to that value (measured, completed, substituted), how precisely it was stated, and its confidence band. |
-| `Run_log` | The run's full provenance: which of the two files this is, timestamp, the export's folder name and the checksums of its four workbooks (never a local path), every setting, and the weights' own vintage. |
+| `Run_log` | The run's full provenance: which of the two files this is, timestamp, the export's file name, date and checksum (never a local path), every setting, and the weights file used with its own run log. |
 
-`HPLI weights.R` writes `HPLI_weights.xlsx` (a notice, the weights, and their own run log).
+`HPLI weights.R` writes `HPLI_weights.xlsx` (a notice, the weights, and their own run log). It never overwrites `HPLI_weights_precomputed.xlsx`.
 
-No output workbook is included in this version of the repository, and all of them are listed in `.gitignore`.
+No results workbook is included in this version of the repository; they are listed in `.gitignore`, as is `HPLI_weights.xlsx`.
 
 **On sharing the results.** Only the publishable workbook is meant to leave your machine. The full workbook is licensed PPDB-derived material. See [License](#license) and `HPLI methodology.md`, section "PPDB licensing and what may be shared".
 
@@ -113,16 +114,17 @@ All in section 1 of `HPLI score.R`, and recorded in `Run_log` for every run.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `ppdb_export_dir` | *(from `local_paths.R`)* | The four-file PPDB export folder. |
+| `ppdb_export_file` | *(from `local_paths.R`)* | The PPDB export: its zip archive, or the workbook itself. |
+| `ppdb_export_date` | *(from the file name)* | The export's date; set in `local_paths.R` only when the file name does not give it. |
 | `output_file` | `"HPLI_results.xlsx"` | The publishable workbook: aggregated scores and data quality. |
 | `full_output_file` | `"HPLI_results_full.xlsx"` | The full workbook, per-metric scores included. Kept local. |
 | `low_hazard_reference_file` | the CSV above | Substances whose missing fate metrics mean "no such pathway" rather than "unknown". |
 | `missing_policy` | `"hpli_precautionary"` | Substitute a missing value with the metric's high-hazard threshold, or (`"complete_only"`) score nothing while any metric is missing. |
 | `coverage_threshold` | `0.60` | Minimum share of metrics with data for a substance to be scored. |
 | `range_policy` | `"worst_case"` | How a range such as `"10-20"` resolves: the more hazardous end, or (`"mean"`) the average. |
-| `synthetic_only` | `FALSE` | Restrict the run to substances the PPDB labels synthetic in origin. |
+| `synthetic_only` | `FALSE` | Restrict the run to substances whose PPDB `Substance origin` reads exactly "Synthetic". A warning lists the values close to it (misspellings, qualified entries) that are left out. |
 | `a_soil`, `a_water` | `180`, `7` | Persistence-coefficient reference windows, in days. |
-| `weight_source` | `"table1"` | Published weights, or (`"spearman_ppdb"`) weights recomputed by `HPLI weights.R`. |
+| `weight_source` | `"weights_file"` | Weights computed by `HPLI weights.R` — `weights_file` (`"HPLI_weights.xlsx"`) if it exists, else `weights_file_precomputed` (`"HPLI_weights_precomputed.xlsx"`) — or (`"table1"`) the weights published in table 1 of the article. |
 | `export_raw_ppdb_values` | `FALSE` | Whether raw PPDB values reach the full workbook. Never the publishable one. |
 | `data_quality_scope` | `"computable_only"` | Whether the `Data_quality` sheet covers only the substances that were scored, or all of them. |
 
@@ -130,9 +132,9 @@ All in section 1 of `HPLI score.R`, and recorded in `Run_log` for every run.
 
 ## Adapting to another PPDB export
 
-The column maps at the top of `HPLI import.R` translate each PPDB export header into the internal name the code uses. They were written against the 3 May 2024 PPDB export, whose headers reflect the pipeline that produced it — some fields spell out spaces and brackets, others use dots, within the very same sheet — which is why each column is mapped individually rather than by a blanket rule.
+The column maps at the top of `HPLI import.R` translate each PPDB export header into the internal name the code uses. They were written against the 3 May 2024 PPDB export, and each column is mapped individually rather than by a blanket rule.
 
-If a run stops on a missing column, or a metric comes back empty for every substance, the headers have moved. `HPLI import.R` documents the procedure in place: print the real headers and edit the right-hand side of the corresponding map entry (additionnaly compare the result against a reference run before trusting it, since a silently mis-mapped column is far more likely than a hard error).
+If a run stops on a missing sheet or column, or a metric comes back empty for every substance, the headers have moved. `HPLI import.R` documents the procedure in place: print the real headers and edit the right-hand side of the corresponding map entry (additionnaly compare the result against a reference run before trusting it, since a silently mis-mapped column is far more likely than a hard error).
 
 ## Adapting to another metric set
 
@@ -157,7 +159,7 @@ Please cite the article for the indicator, and this repository for the implement
 
 > Vandevoorde, N., Kudsk, P., Agnan, Y. and Baret, P. V. (2025). Five methodological updates of the Danish Pesticide Load Indicator to support EU-wide pesticide risk reduction policies. *Environmental Research Letters*, 20, 124070. https://doi.org/10.1088/1748-9326/ae269b
 >
-> Vandevoorde, N. (2026). *HPLI: an R implementation of the Harmonised Pesticide Load Indicator* (version 0.1.0) [Computer software]. UCLouvain. https://github.com/noevandevoorde/HPLI
+> Vandevoorde, N. (2026). *HPLI: an R implementation of the Harmonised Pesticide Load Indicator* (version 0.1.1) [Computer software]. UCLouvain. https://github.com/noevandevoorde/HPLI
 
 The method is set out in full in appendices D to I of the dissertation:
 
@@ -169,7 +171,7 @@ Work using the PPDB data behind the scores must also cite the PPDB, as set out u
 
 - **Code** — the R scripts, `local_paths.example.R` and the rest of this repository unless listed below. Copyright (C) 2026 UCLouvain; author Noé Vandevoorde. Licensed under the GNU General Public License, version 3 or (at your option) any later version: see `LICENSE`. Each script carries the identifier `SPDX-License-Identifier: GPL-3.0-or-later`.
 - **Methodology** — `HPLI methodology.md` and `HPLI score - natural inert substances.csv`. Licensed under [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). The few PPDB values quoted in the comments of the CSV remain PPDB data, cited below.
-- **Results and weights workbooks** — any workbook these scripts write. None is included in this repository. They are derived from the PPDB and covered by **neither** of the two licences above. They are subject to the AERU [terms and conditions of use of the PPDB](https://sitem.herts.ac.uk/aeru/ppdb/en/docs/Conditions_of_use.pdf), and each carries a `Notice` sheet saying so.
+- **Results and weights workbooks** — any workbook these scripts write, and `HPLI_weights_precomputed.xlsx`, the only one included in this repository. They are derived from the PPDB and covered by **neither** of the two licences above. They are subject to the AERU [terms and conditions of use of the PPDB](https://sitem.herts.ac.uk/aeru/ppdb/en/docs/Conditions_of_use.pdf), and each carries a `Notice` sheet saying so.
 
 Data from the University of Hertfordshire's Pesticide Properties DataBase (PPDB) has been used, under Licence, to support this application. Cite the PPDB as:
 

@@ -6,6 +6,20 @@ Every version records what it changes **and whether that changes the numbers**, 
 
 ---
 
+## [0.1.1] — 2026-09-28
+
+### Changed
+
+- **Weights computed from the PPDB are the default.** `weight_source` now defaults to `"weights_file"`: `HPLI_weights.xlsx` if you have computed your own with `HPLI weights.R`, else `HPLI_weights_precomputed.xlsx`, now shipped with the code and computed on the PPDB export of 3 May 2024. The weights of table 1 of the article remain available as `"table1"`; `"spearman_ppdb"` is gone. **This changes the scores**: against `"table1"`, over the 890 scored substances, the HPLI moves by 0.007 in median (1.4%), 0.075 at most (8%), with a rank correlation of 0.997. The two weight corrections of 0.1.0 now reach the scores.
+- **A warning when weights and scores come from different PPDB exports**, compared by export date.
+- **The PPDB export is read as a single workbook**, as AERU delivers it, either from its zip archive or unzipped. `ppdb_export_dir` is replaced by `ppdb_export_file` in `local_paths.R`; the date is read from the file name, or from an optional `ppdb_export_date`. Run logs identify the export by file name, date and checksum.
+- **`synthetic_only` warns** about `Substance origin` values close to "Synthetic" that its exact match leaves out, and is now recorded in `Run_log`.
+
+### Added
+
+- `CITATION.cff`, and the full reference of the article.
+- Methodology: sections linked by title, with a table of contents.
+
 ## [0.1.0] — 2026-09-24
 
 First “packaged” version: the four scoring scripts, the visualisation, and the methodological record.

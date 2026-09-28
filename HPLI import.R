@@ -49,10 +49,14 @@ library(stringr)
 #'
 #' @param file Path to the settings file, expected next to the scripts.
 #'   Default "local_paths.R".
-#' @param require_dirs Character vector of setting names that the file must
-#'   define, each holding the path of an existing directory. Checked in the
+#' @param require_files Character vector of setting names that the file
+#'   must define, each holding the path of an existing file. Checked in the
 #'   order given.
-#' @return Invisibly, the named character vector of the `require_dirs`
+#' @param optional_settings Character vector of setting names the file may
+#'   define or leave out. Any value they hold from an earlier run is removed
+#'   before the file is read, so a setting deleted from the file does not
+#'   survive in the session.
+#' @return Invisibly, the named character vector of the `require_files`
 #'   values that were validated. Called for its side effect: everything the
 #'   file assigns is created in the global environment.
 #' @details
@@ -63,19 +67,20 @@ library(stringr)
 #'
 #' Three failures stop the run, each naming the setting and the template: a
 #' missing file, a setting absent from the file, and a setting holding
-#' anything other than the path of a directory that exists. Every validated
-#' path is echoed to the console, so a run is never ambiguous about which
-#' data it read.
+#' anything other than the path of a file that exists. Every validated path
+#' is echoed to the console, so a run is never ambiguous about which data
+#' it read.
 #'
-#' Only input locations belong in that file. A script's own output paths
-#' are settings of the script, declared with the rest of them, and are not
-#' read from here.
-load_local_paths <- function(file = "local_paths.R", require_dirs = character()) {
+#' Only input locations, and what describes them, belong in that file. A
+#' script's own output paths are settings of the script, declared with the
+#' rest of them, and are not read from here.
+load_local_paths <- function(file = "local_paths.R", require_files = character(),
+                             optional_settings = character()) {
   if (!is.character(file) || length(file) != 1L || is.na(file)) {
     stop("file must be a single path.", call. = FALSE)
   }
-  if (!is.character(require_dirs)) {
-    stop("require_dirs must be a character vector of setting names.", call. = FALSE)
+  if (!is.character(require_files) || !is.character(optional_settings)) {
+    stop("require_files and optional_settings must be character vectors of setting names.", call. = FALSE)
   }
   if (!file.exists(file)) {
     stop(
@@ -86,10 +91,11 @@ load_local_paths <- function(file = "local_paths.R", require_dirs = character())
     )
   }
 
+  suppressWarnings(rm(list = optional_settings, envir = globalenv()))
   source(file) # evaluated in the global environment: see @details
 
   validated <- character(0)
-  for (setting in require_dirs) {
+  for (setting in require_files) {
     if (!exists(setting, envir = globalenv(), inherits = FALSE)) {
       stop(
         "\"", file, "\" does not define `", setting, "`. See ",
@@ -105,9 +111,9 @@ load_local_paths <- function(file = "local_paths.R", require_dirs = character())
         call. = FALSE
       )
     }
-    if (!dir.exists(value)) {
+    if (!file.exists(value) || dir.exists(value)) {
       stop(
-        "`", setting, "` in \"", file, "\" is not an existing folder: ",
+        "`", setting, "` in \"", file, "\" is not an existing file: ",
         value,
         call. = FALSE
       )
@@ -117,6 +123,35 @@ load_local_paths <- function(file = "local_paths.R", require_dirs = character())
   }
 
   invisible(validated)
+}
+
+#' Locate the PPDB export workbook, unzipping it if need be
+#'
+#' @param ppdb_export_file Path to the export: either the ".zip" archive
+#'   that holds the workbook, or the ".xlsx" workbook itself.
+#' @return The path of the ".xlsx" workbook to read: `ppdb_export_file`
+#'   itself, or its copy extracted into R's session temporary folder.
+#' @details
+#' Keeping the export zipped and reading it from there means the source
+#' file is never opened in a spreadsheet program, which may re-save it on
+#' closing. The archive must hold exactly one ".xlsx" workbook; the copy is
+#' extracted afresh on every call and disappears with the R session.
+extract_ppdb_workbook <- function(ppdb_export_file) {
+  if (!grepl("\\.zip$", ppdb_export_file, ignore.case = TRUE)) {
+    return(ppdb_export_file)
+  }
+  listed <- utils::unzip(ppdb_export_file, list = TRUE)$Name
+  workbooks <- listed[grepl("\\.xlsx$", listed, ignore.case = TRUE) & !grepl("^__MACOSX/", listed)]
+  if (length(workbooks) != 1L) {
+    stop(
+      "'", basename(ppdb_export_file), "' must hold exactly one .xlsx workbook; found ",
+      length(workbooks), if (length(workbooks) > 0) paste0(" (", paste(workbooks, collapse = ", "), ")"), ".",
+      call. = FALSE
+    )
+  }
+  extract_dir <- file.path(tempdir(), "ppdb_export")
+  utils::unzip(ppdb_export_file, files = workbooks, exdir = extract_dir, overwrite = TRUE, junkpaths = TRUE)
+  file.path(extract_dir, basename(workbooks))
 }
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -354,7 +389,7 @@ compute_gus <- function(soil_dt50_completed, kfoc_completed) {
 }
 
 # ──────────────────────────────────────────────────────────────────────────
-# Reading the four-file PPDB export                                      ####
+# Reading the PPDB export workbook                                       ####
 # ──────────────────────────────────────────────────────────────────────────
 
 #' Read one sheet of the export, every column as text
@@ -376,20 +411,24 @@ read_sheet_as_text <- function(path, sheet) {
 # PPDB export version: what to change if your headers differ            ####
 # ──────────────────────────────────────────────────────────────────────────
 #
+# The code reads the export workbook as AERU delivers it (e.g.
+# "PPDB-<licensee>-24-05-03.xlsx", straight from its zip archive if need
+# be - see extract_ppdb_workbook()), unmodified. Of its sheets, five are read:
+# "General", "Fate", "Aquatic Ecotox", "Terrestrial Ecotox" and "Human"; the
+# others ("Metabolites", "Aliases", "Languages") are not used.
+#
 # The column maps below were written against the PPDB export of 2024-05-03
 # and are NOT guaranteed to fit a later one. AERU revises the database
-# continuously, and an export's column headers reflect the production
-# pipeline that generated it as much as the database itself - this export,
-# for instance, spells some fields with dots and others with spaces and
-# brackets within the very same sheet (e.g. "Soil.DT50.typical...days" next
-# to "Soil DT50 - Field (days)"), which is why each column is mapped
-# individually rather than through one blanket rule.
+# continuously, and an export's column headers may move with it, which is
+# why each column is mapped individually rather than through one blanket
+# rule.
 #
-# If read_ppdb_export() errors on a missing column, or a metric comes back
-# empty for every substance, the export's headers have moved. To adapt:
+# If read_ppdb_export() errors on a missing sheet or column, or a metric
+# comes back empty for every substance, the export's layout has moved. To
+# adapt:
 #
-#   1. Print the real headers of the offending file, e.g.
-#        names(readxl::read_excel(file.path(ppdb_export_dir, "Fate.xlsx"), n_max = 0))
+#   1. Print the real headers of the offending sheet, e.g.
+#        names(readxl::read_excel(extract_ppdb_workbook(ppdb_export_file), sheet = "Fate", n_max = 0))
 #   2. Find the equivalent column and edit the corresponding entry in the
 #      map below. Each entry reads `internal name` = "name in the export":
 #      the LEFT side is used throughout this script and must not change;
@@ -409,22 +448,18 @@ read_sheet_as_text <- function(path, sheet) {
 #      the maps feeding it, and "Data_quality" then narrows it down to the
 #      metric whose status or bound changed.
 #
-# There are five maps, one per internal table, and each entry reads
-# `internal name` = "header in the export". The internal name is what the
-# rest of this file and "HPLI score.R" use; the string is what is looked
-# up. Every column read is listed, including those whose header already
-# matches its internal name verbatim, so the maps double as a complete
-# inventory of what read_ppdb_export() depends on.
-#
-# Two spellings coexist in this export - some fields use dots where others
-# use spaces and brackets, within the very same sheet
-# ("Soil.DT50.typical...days" next to "Soil DT50 - Field (days)") - which
-# is why each column is mapped one by one. GUS appears in none of the maps:
-# this export has no GUS column, and the metric is always computed.
+# There are five maps, one per internal table and sheet, and each entry
+# reads `internal name` = "header in the export". The internal name is what
+# the rest of this file and "HPLI score.R" use; the string is what is
+# looked up. Every column read is listed, including those whose header
+# already matches its internal name verbatim, so the maps double as a
+# complete inventory of what read_ppdb_export() depends on. GUS appears in
+# none of the maps: this export has no GUS column, and the metric is always
+# computed.
 #
 # The "<> - ..." and "QB - ..." sibling columns feed the traceability
-# output. The ecotoxicity and human-toxicity files carry both for every
-# metric HPLI-EU uses; the fate file carries quality bands but no
+# output. The ecotoxicity and human-toxicity sheets carry both for every
+# metric HPLI-EU uses; the fate sheet carries quality bands but no
 # comparator columns at all. That asymmetry is a property of the export,
 # handled in parse_ppdb_bound(), not an omission here.
 
@@ -436,26 +471,25 @@ general_column_map <- c(
   `Pesticide type`                   = "Pesticide type",
   `Substance origin`                 = "Substance origin",
   # CAS registry number and chemical family, for the substance summary in
-  # "HPLI visualisation.R". "CASS RN" is this export's own header spelling
-  # - a typo upstream of this code, not a PPDB standard. "Substance group"
-  # is PPDB's chemical-family field, e.g. "Organophosphate herbicide;
-  # Phosphonoglycine herbicide" for glyphosate.
+  # "HPLI visualisation.R". "Substance group" is PPDB's chemical-family
+  # field, e.g. "Organophosphate herbicide; Phosphonoglycine herbicide" for
+  # glyphosate.
   # ("Family" in its substance-info box), confirmed by spot-checking
   # glyphosate's CAS and family string against that app's own displayed
   # values (identical).
-  CAS                                = "CASS RN",
+  CAS                                = "CAS RN",
   `Substance group`                  = "Substance group"
 )
 
 fate_column_map <- c(
   ID                             = "ID",
-  `Soil DT50 - Typical (days)`   = "Soil.DT50.typical...days",
+  `Soil DT50 - Typical (days)`   = "Soil DT50 - Typical (days)",
   `QB - Soil DT50 - Typical`     = "QB - Soil DT50 - Typical",
-  `Soil DT50 - Lab (days)`       = "Soil.DT50.lab...days",
+  `Soil DT50 - Lab (days)`       = "Soil DT50 - Lab (days)",
   `QB - Soil DT50 - Lab`         = "QB - Soil DT50 - Lab",
   `Soil DT50 - Field (days)`     = "Soil DT50 - Field (days)",
   `QB - Soil DT50 - Field`       = "QB - Soil DT50 - Field",
-  `Water phase only DT50 (days)` = "Water.phase.DT50...days",
+  `Water phase only DT50 (days)` = "Water phase only DT50 (days)",
   `QB - Water phase only DT50`   = "QB - Water phase only DT50",
   `Kfoc (ml/g)`                  = "Kfoc (ml/g)",
   `QB - Freundlich isotherm`     = "QB - Freundlich isotherm",
@@ -468,60 +502,54 @@ fate_column_map <- c(
 # metric is computed from soil DT50 and KFOC in every case - see
 # compute_gus() above. Nothing to map.
 
-# Ecotox.xlsx merges terrestrial and aquatic ecotox into one sheet; these
-# two maps are applied to that same sheet, not two different files.
+# Applied to the "Terrestrial Ecotox" sheet.
 ecotox_terrestrial_column_map <- c(
   ID                                                   = "ID",
-  `Birds - Acute LD50 (mg/kg)`                         = "Birds...Acute.LD50.mg.kg",
+  `Birds - Acute LD50 (mg/kg)`                         = "Birds - Acute LD50 (mg/kg)",
   `<> - Birds - Acute LD50`                             = "<> - Birds - Acute LD50",
   `QB - Birds - Acute LD50`                             = "QB - Birds - Acute LD50",
-  `Earthworms - Acute 14d LC50 (mg/kg)`                 = "Earthworms...Acute.14d.LC50.mg.kg",
+  `Earthworms - Acute 14d LC50 (mg/kg)`                 = "Earthworms - Acute 14d LC50 (mg/kg)",
   `<> - Earthworms - Acute`                             = "<> - Earthworms - Acute",
   `QB - Earthworms - Acute`                             = "QB - Earthworms - Acute",
-  `Honeybees - Contact acute 48hr LD50 (ug per bee)`    = "Honeybees...Contact.acute.48hr.LD50.ug.per.bee",
+  `Honeybees - Contact acute 48hr LD50 (ug per bee)`    = "Honeybees - Contact acute 48hr LD50 (ug per bee)",
   `<> - Honeybees - Contact acute 48hr LD50`            = "<> - Honeybees - Contact acute 48hr LD50",
   `QB - Honeybees - Contact acute 48hr LD50`            = "QB - Honeybees - Contact acute 48hr LD50",
-  `Honeybees - Oral acute 48hr LD50 (ug per bee)`       = "Honeybees...Oral.Acute.48hr.LD50.ug.per.bee",
+  `Honeybees - Oral acute 48hr LD50 (ug per bee)`       = "Honeybees - Oral acute 48hr LD50 (ug per bee)",
   `<> - Honeybees - Oral acute 48hr LD50`               = "<> - Honeybees - Oral acute 48hr LD50",
   `QB - Honeybees - Oral acute 48hr LD50`               = "QB - Honeybees - Oral acute 48hr LD50",
   `Honeybees - Unknown mode acute 48hr LD50 (ug per bee)` = "Honeybees - Unknown mode acute 48hr LD50 (ug per bee)",
   `<> - Honeybees - Unknown mode acute 48hr LD50`       = "<> - Honeybees - Unknown mode acute 48hr LD50",
   `QB - Honeybees - Unknown mode acute 48hr LD50`       = "QB - Honeybees - Unknown mode acute 48hr LD50",
-  `Mammals - Acute oral LD50 (mg/kg BW/day)`            = "Mammals...Acute.Oral.LD50.mg.kg.BW.day",
+  `Mammals - Acute oral LD50 (mg/kg BW/day)`            = "Mammals - Acute oral LD50 (mg/kg BW/day)",
   `<> - Mammals - Acute oral LD50`                       = "<> - Mammals - Acute oral LD50",
   `QB - Mammals - Acute oral LD50`                       = "QB - Mammals - Acute oral LD50"
 )
 
-# Two mappings in this file needed a substantive check rather than a
-# mechanical rename, and are worth flagging to anyone adapting the maps to
-# another export.
+# Applied to the "Aquatic Ecotox" sheet. Two mappings in it involve a
+# choice rather than a mere rename, worth re-checking when adapting the
+# maps to another export.
 #
-# Algae: this export has exactly one acute-algae column, spelled
-# "Algae...Acute.72hr.EC50.Growth.mg.l" in the value cell but
-# "Algae - Acute 72hr EC50 growth" in its comparator and quality-band
-# siblings. It is read as the freshwater algal growth-rate acute EC50 the
-# indicator asks for.
+# Algae: this export has exactly one acute-algae column,
+# "Algae - Acute 72hr EC50 growth (mg/l)". It is read as the freshwater
+# algal growth-rate acute EC50 the indicator asks for.
 #
-# Aquatic invertebrates and fish: the temperate columns are the ones
-# carrying NO suffix here, which is the opposite of what the headers
-# suggest. Their comparator and quality-band siblings do spell out
-# "- TEMPERATE", which is how the value columns were identified. An export
-# that labels them differently will need this pair re-checked.
+# Aquatic invertebrates and fish: the acute endpoints come in a TEMPERATE
+# and a TROPICAL column; the temperate ones are read.
 ecotox_aquatic_column_map <- c(
   ID                                                            = "ID",
-  `Algae - Acute (growth rate, fresh - mg/l)`                   = "Algae...Acute.72hr.EC50.Growth.mg.l",
+  `Algae - Acute (growth rate, fresh - mg/l)`                   = "Algae - Acute 72hr EC50 growth (mg/l)",
   `<> - Algae - Acute 72hr EC50 growth`                          = "<> - Algae - Acute 72hr EC50 growth",
   `QB - Algae - Acute 72hr EC50 growth`                          = "QB - Algae - Acute 72hr EC50 growth",
-  `Aquatic invertebrates - Acute 48hr EC50 (mg/l) - TEMPERATE`  = "Aquatic.Invertebrates...Acute.48hr.EC50.mg.l",
+  `Aquatic invertebrates - Acute 48hr EC50 (mg/l) - TEMPERATE`  = "Aquatic invertebrates - Acute 48hr EC50 (mg/l) - TEMPERATE",
   `<> - Aquatic invertebrates - Acute 48hr EC50 - TEMPERATE`    = "<> - Aquatic invertebrates - Acute 48hr EC50 - TEMPERATE",
   `QB - Aquatic invertebrates - Acute 48hr EC50 - TEMPERATE`    = "QB - Aquatic invertebrates - Acute 48hr EC50 - TEMPERATE",
-  `Aquatic invertebrates - Chronic 21d NOEC (mg/l) - TEMPERATE` = "Aquatic.Invertebrates...Chronic.21d.NOEC.mg.l",
+  `Aquatic invertebrates - Chronic 21d NOEC (mg/l) - TEMPERATE` = "Aquatic invertebrates - Chronic 21d NOEC (mg/l) - TEMPERATE",
   `<> - Aquatic invertebrates - Chronic 21d NOEC - TEMPERATE`   = "<> - Aquatic invertebrates - Chronic 21d NOEC - TEMPERATE",
   `QB - Aquatic invertebrates - Chronic 21d NOEC - TEMPERATE`   = "QB - Aquatic invertebrates - Chronic 21d NOEC - TEMPERATE",
-  `Fish - Acute 96hr LC50 (mg/l) - TEMPERATE`                   = "Fish...Acute.96hr.LC50.mg.l",
+  `Fish - Acute 96hr LC50 (mg/l) - TEMPERATE`                   = "Fish - Acute 96hr LC50 (mg/l) - TEMPERATE",
   `<> - Fish - Acute 96hr LC50 - TEMPERATE`                      = "<> - Fish - Acute 96hr LC50 - TEMPERATE",
   `QB - Fish - Acute 96hr LC50 - TEMPERATE`                      = "QB - Fish - Acute 96hr LC50 - TEMPERATE",
-  `Fish - Chronic 21d NOEC (mg/l) - TEMPERATE`                  = "Fish...Chronic.21d.NOEC.mg.l",
+  `Fish - Chronic 21d NOEC (mg/l) - TEMPERATE`                  = "Fish - Chronic 21d NOEC (mg/l) - TEMPERATE",
   `<> - Fish - Chronic 21d NOEC - TEMPERATE`                     = "<> - Fish - Chronic 21d NOEC - TEMPERATE",
   `QB - Fish - Chronic 21d NOEC - TEMPERATE`                     = "QB - Fish - Chronic 21d NOEC - TEMPERATE"
 )
@@ -551,7 +579,7 @@ human_column_map <- c(
 #' @param df The sheet as read.
 #' @param map A named character vector: names are the internal column
 #'   names, values the headers to find them under.
-#' @param source_label The file name, used in the error message.
+#' @param source_label The sheet name, used in the error message.
 #' @return `df` reduced to the mapped columns, renamed to their internal
 #'   names, in the map's order.
 #' @details
@@ -562,7 +590,7 @@ apply_column_map <- function(df, map, source_label) {
   missing <- map[!map %in% names(df)]
   if (length(missing) > 0) {
     stop(
-      "read_ppdb_export(): expected column(s) not found in '", source_label, "': ",
+      "read_ppdb_export(): expected column(s) not found in sheet '", source_label, "': ",
       paste(missing, collapse = "; "),
       ". The PPDB export's header names may have changed (e.g. a newer AERU ",
       "version, or a different regional/BPDB export) - update the corresponding ",
@@ -575,29 +603,42 @@ apply_column_map <- function(df, map, source_label) {
   out
 }
 
-#' Read a four-file PPDB export into five internal tables
+#' Read a PPDB export workbook into five internal tables
 #'
-#' @param dir Folder holding General.xlsx, Fate.xlsx, Ecotox.xlsx and
-#'   Human.xlsx.
+#' @param path Path to the export workbook, as AERU delivers it.
 #' @return A named list of five tibbles: `identification`, `fate`,
 #'   `terrestrial_ecotox`, `aquatic_ecotox`, `human_tox`, with the internal
 #'   column names `load_ppdb_raw_metrics()` expects.
 #' @details
-#' Ecotox.xlsx holds terrestrial and aquatic ecotoxicity in a single sheet,
-#' so two of the five tables are two renamed views of the same data rather
-#' than two files.
-read_ppdb_export <- function(dir) {
-  general    <- read_sheet_as_text(file.path(dir, "General.xlsx"), "General")
-  fate_raw   <- read_sheet_as_text(file.path(dir, "Fate.xlsx"), "Fate")
-  ecotox_raw <- read_sheet_as_text(file.path(dir, "Ecotox.xlsx"), "Ecotox")
-  human_raw  <- read_sheet_as_text(file.path(dir, "Human.xlsx"), "Human")
-
-  list(
-    identification     = apply_column_map(general, general_column_map, "General.xlsx"),
-    fate               = apply_column_map(fate_raw, fate_column_map, "Fate.xlsx"),
-    terrestrial_ecotox = apply_column_map(ecotox_raw, ecotox_terrestrial_column_map, "Ecotox.xlsx"),
-    aquatic_ecotox     = apply_column_map(ecotox_raw, ecotox_aquatic_column_map, "Ecotox.xlsx"),
-    human_tox          = apply_column_map(human_raw, human_column_map, "Human.xlsx")
+#' One sheet per table. A sheet missing from the workbook stops the run and
+#' names every sheet that was expected, before anything is read.
+read_ppdb_export <- function(path) {
+  sheets <- c(
+    identification     = "General",
+    fate               = "Fate",
+    terrestrial_ecotox = "Terrestrial Ecotox",
+    aquatic_ecotox     = "Aquatic Ecotox",
+    human_tox          = "Human"
+  )
+  missing_sheets <- setdiff(sheets, excel_sheets(path))
+  if (length(missing_sheets) > 0) {
+    stop(
+      "read_ppdb_export(): sheet(s) not found in '", basename(path), "': ",
+      paste(missing_sheets, collapse = "; "), ". Expected the AERU export workbook, unmodified, ",
+      "with the sheets ", paste(sheets, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  maps <- list(
+    identification     = general_column_map,
+    fate               = fate_column_map,
+    terrestrial_ecotox = ecotox_terrestrial_column_map,
+    aquatic_ecotox     = ecotox_aquatic_column_map,
+    human_tox          = human_column_map
+  )
+  lapply(
+    setNames(names(sheets), names(sheets)),
+    function(table) apply_column_map(read_sheet_as_text(path, sheets[[table]]), maps[[table]], sheets[[table]])
   )
 }
 
@@ -607,13 +648,17 @@ read_ppdb_export <- function(dir) {
 
 #' Read and complete the 20 HPLI-EU metrics for every substance
 #'
-#' @param ppdb_export_dir Folder holding the four-file PPDB export.
-#'   Required; an empty or non-existent path stops the run with a message
-#'   pointing at "local_paths.example.R".
+#' @param ppdb_workbook Path to the PPDB export workbook (".xlsx"), as
+#'   `extract_ppdb_workbook()` returns it. Required; an empty or
+#'   non-existent path stops the run with a message pointing at
+#'   "local_paths.example.R".
 #' @param range_policy Passed to `parse_ppdb_numeric()`: `"worst_case"`
 #'   (default) or `"mean"`.
-#' @param synthetic_only `TRUE` keeps only substances the PPDB labels as
-#'   synthetic in origin. Default `FALSE`.
+#' @param synthetic_only `TRUE` keeps only substances whose PPDB
+#'   "Substance origin" reads exactly "Synthetic". Default `FALSE`. The
+#'   field is free text: a value close to "Synthetic" without being it - a
+#'   misspelling, or a qualified entry such as "Semi-synthetic" - is
+#'   excluded, and a warning lists every such value met.
 #' @param water_dt50_stable_assumption `TRUE` (default) reads a water DT50
 #'   recorded only as the free text "stable" as 300 days; `FALSE` leaves it
 #'   missing.
@@ -637,31 +682,29 @@ read_ppdb_export <- function(dir) {
 #' them. See "HPLI methodology.md", section "Weight calculation", for why
 #' the two callers differ on it.
 load_ppdb_raw_metrics <- function(
-  ppdb_export_dir,
+  ppdb_workbook,
   range_policy = "worst_case",
   synthetic_only = FALSE,
   water_dt50_stable_assumption = TRUE
 ) {
-  if (is.null(ppdb_export_dir) || !nzchar(trimws(ppdb_export_dir))) {
+  if (is.null(ppdb_workbook) || !nzchar(trimws(ppdb_workbook))) {
     stop(
-      "ppdb_export_dir is not set. The PPDB export is licensed AERU material ",
-      "and is not distributed with this code: point ppdb_export_dir at your ",
-      "own copy of the four-file export (General.xlsx, Fate.xlsx, ",
-      "Ecotox.xlsx, Human.xlsx). Copy \"local_paths.example.R\" to ",
-      "\"local_paths.R\" and set it there, or edit the setting directly in ",
-      "the calling script.",
+      "No PPDB export workbook given. The PPDB export is licensed AERU material ",
+      "and is not distributed with this code: point ppdb_export_file at your ",
+      "own copy of the export (e.g. \"PPDB-<licensee>-24-05-03.zip\"). Copy ",
+      "\"local_paths.example.R\" to \"local_paths.R\" and set it there.",
       call. = FALSE
     )
   }
-  if (!dir.exists(ppdb_export_dir)) {
-    stop("PPDB export folder not found: ", ppdb_export_dir, call. = FALSE)
+  if (!file.exists(ppdb_workbook) || dir.exists(ppdb_workbook)) {
+    stop("PPDB export workbook not found: ", ppdb_workbook, call. = FALSE)
   }
   if (!is.logical(water_dt50_stable_assumption) ||
       length(water_dt50_stable_assumption) != 1L ||
       is.na(water_dt50_stable_assumption)) {
     stop("water_dt50_stable_assumption must be a single TRUE or FALSE.", call. = FALSE)
   }
-  ppdb <- read_ppdb_export(ppdb_export_dir)
+  ppdb <- read_ppdb_export(ppdb_workbook)
   identification     <- ppdb$identification
   fate               <- ppdb$fate
   terrestrial_ecotox <- ppdb$terrestrial_ecotox
@@ -669,6 +712,24 @@ load_ppdb_raw_metrics <- function(
   human_tox          <- ppdb$human_tox
 
   if (synthetic_only) {
+    # The filter itself stays an exact match: deciding that "Snythetic" or
+    # "Semi-synthetic" counts as synthetic is a data-quality call, not one
+    # this code makes silently. What it does is say which values it left
+    # out. agrepl() matches approximately and within the string, so it
+    # catches misspellings and qualified entries alike.
+    origin <- identification$`Substance origin`
+    near_synthetic <- !is.na(origin) & origin != "Synthetic" &
+      agrepl("Synthetic", origin, max.distance = 2, ignore.case = TRUE)
+    if (any(near_synthetic)) {
+      counts <- table(origin[near_synthetic])
+      warning(
+        "synthetic_only keeps the substances whose 'Substance origin' reads exactly \"Synthetic\". ",
+        sum(near_synthetic), " substance(s) carry a value close to it and are excluded - possible ",
+        "misspellings or qualified entries in the PPDB, worth checking: ",
+        paste0("\"", names(counts), "\" (", as.integer(counts), ")", collapse = "; "), ".",
+        call. = FALSE
+      )
+    }
     identification <- identification |> filter(`Substance origin` == "Synthetic")
   }
 
@@ -953,23 +1014,69 @@ load_ppdb_raw_metrics <- function(
 # Output provenance and licence notice                                   ####
 # ──────────────────────────────────────────────────────────────────────────
 
+#' Date of a PPDB export
+#'
+#' @param ppdb_workbook Path to the export workbook.
+#' @param ppdb_export_date Optional date set in "local_paths.R", as
+#'   "YYYY-MM-DD"; `NULL` when not set.
+#' @return The export's date, a `Date`.
+#' @details
+#' AERU names its exports "PPDB-<licensee>-YY-MM-DD.xlsx", so the date is
+#' read from the file name. That convention is inferred from the one export
+#' this code was written against, not documented by AERU, hence the
+#' optional setting: when set, it is used, and a file name that says
+#' otherwise is reported rather than silently overridden. With neither a
+#' readable file name nor the setting, the run stops: the date is what
+#' "HPLI score.R" compares to tell whether a weights file was computed on
+#' the same PPDB version.
+resolve_ppdb_export_date <- function(ppdb_workbook, ppdb_export_date = NULL) {
+  parts <- str_match(basename(ppdb_workbook), "(\\d{2})-(\\d{2})-(\\d{2})\\.xlsx$")
+  from_name <- as.Date(sprintf("20%s-%s-%s", parts[, 2], parts[, 3], parts[, 4]), format = "%Y-%m-%d")
+
+  if (is.null(ppdb_export_date) || (is.character(ppdb_export_date) && !nzchar(trimws(ppdb_export_date)))) {
+    if (is.na(from_name)) {
+      stop(
+        "No date can be read from the PPDB export file name \"", basename(ppdb_workbook),
+        "\" (expected \"...-YY-MM-DD.xlsx\"). Set `ppdb_export_date` (\"YYYY-MM-DD\") in ",
+        "\"local_paths.R\" - see \"local_paths.example.R\".",
+        call. = FALSE
+      )
+    }
+    return(from_name)
+  }
+
+  from_setting <- as.Date(as.character(ppdb_export_date), format = "%Y-%m-%d")
+  if (length(from_setting) != 1L || is.na(from_setting)) {
+    stop("`ppdb_export_date` in \"local_paths.R\" must be a single date written \"YYYY-MM-DD\".", call. = FALSE)
+  }
+  if (!is.na(from_name) && from_name != from_setting) {
+    message(
+      "ppdb_export_date (", from_setting, ") differs from the date in the file name (",
+      from_name, "); the setting is used."
+    )
+  }
+  from_setting
+}
+
 #' Identify a PPDB export without recording where it is stored
 #'
-#' @param ppdb_export_dir Folder holding the four-file PPDB export.
+#' @param ppdb_workbook Path to the export workbook.
+#' @param ppdb_export_date The export's date, as `resolve_ppdb_export_date()`
+#'   returns it.
 #' @return A tibble of `setting` and `value` rows, ready to bind into a
-#'   `Run_log`: `ppdb_export_folder`, the folder's own name, then one
-#'   `ppdb_md5_<file>` row per workbook holding its MD5 checksum.
+#'   `Run_log`: `ppdb_workbook`, the workbook's file name without its
+#'   folder; `ppdb_export_date`; and `ppdb_md5`, its MD5 checksum.
 #' @details
 #' A run log travels with its workbook, so it records no local path: the
-#' folder name says which export was meant, and the checksums say whether
-#' two runs read byte-identical files - including whether a weights file
-#' and a scoring run came from the same export. The full path is still
-#' echoed to the console by `load_local_paths()`.
-compute_ppdb_fingerprint <- function(ppdb_export_dir) {
-  export_files <- c(general = "General.xlsx", fate = "Fate.xlsx", ecotox = "Ecotox.xlsx", human = "Human.xlsx")
+#' file name and date say which export was meant. The checksum is recorded
+#' for provenance only and compared nowhere: merely opening a workbook in a
+#' spreadsheet program can re-save it, changing its checksum but not its
+#' content, so the date is what tells two PPDB versions apart. The full
+#' path is still echoed to the console by `load_local_paths()`.
+compute_ppdb_fingerprint <- function(ppdb_workbook, ppdb_export_date) {
   tibble(
-    setting = c("ppdb_export_folder", paste0("ppdb_md5_", names(export_files))),
-    value   = c(basename(ppdb_export_dir), unname(tools::md5sum(file.path(ppdb_export_dir, export_files))))
+    setting = c("ppdb_workbook", "ppdb_export_date", "ppdb_md5"),
+    value   = c(basename(ppdb_workbook), format(ppdb_export_date), unname(tools::md5sum(ppdb_workbook)))
   )
 }
 
@@ -1018,7 +1125,7 @@ build_output_notice <- function(contents, redistribution) {
         "https://sitem.herts.ac.uk/aeru/ppdb/en/docs/Conditions_of_use.pdf"
       ),
       redistribution,
-      "See the Run_log sheet: run timestamp, every setting, and the checksums of the PPDB export read.",
+      "See the Run_log sheet: run timestamp, every setting, and the file name, date and checksum of the PPDB export read.",
       paste(
         "HPLI R implementation, https://github.com/noevandevoorde/HPLI.",
         "Copyright (C) 2026 UCLouvain; author Noé Vandevoorde. Licensed under GPL-3.0-or-later."

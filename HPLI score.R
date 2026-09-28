@@ -23,13 +23,15 @@
 #' version would change, so that a variant means sourcing different
 #' siblings rather than editing this file:
 #' * "HPLI parameters.R" - the indicator definition: metrics, thresholds,
-#'   compartments, default weights.
+#'   compartments, published table-1 weights.
 #' * "HPLI import.R" - reading and completing the metrics from the export.
 #'   Shared with "HPLI weights.R", so both derive metrics identically.
 #'
 #' @section Settings:
 #' Set in section 1 below.
-#' * `ppdb_export_dir` - the export folder. Read from the untracked
+#' * `ppdb_export_file`, `ppdb_export_date` - the PPDB export, as the zip
+#'   archive AERU delivers or the workbook it holds, and optionally its
+#'   date when the file name does not give it. Read from the untracked
 #'   "local_paths.R" rather than set here.
 #' * `output_file` - the publishable workbook: aggregated scores and data
 #'   quality, no per-metric score.
@@ -43,8 +45,10 @@
 #' * `range_policy` - "worst_case" or "mean".
 #' * `synthetic_only` - restrict the run to synthetic-origin substances.
 #' * `a_soil`, `a_water` - persistence-coefficient constants, in days.
-#' * `weight_source`, `weights_file` - hardcoded weights, or weights
-#'   recomputed by "HPLI weights.R".
+#' * `weight_source`, `weights_file`, `weights_file_precomputed` -
+#'   weights computed by "HPLI weights.R" (default: your own if you ran it,
+#'   else the precomputed file shipped with the code), or the published
+#'   table-1 weights.
 #' * `export_raw_ppdb_values` - whether raw PPDB values reach the full
 #'   workbook. Never the publishable one.
 #' * `data_quality_scope` - how much of the traceability detail to export.
@@ -92,15 +96,20 @@ source("HPLI import.R")
 # 1. Settings                                                            ####
 # ──────────────────────────────────────────────────────────────────────────
 
-# `ppdb_export_dir` - the folder holding General.xlsx, Fate.xlsx,
-# Ecotox.xlsx and Human.xlsx - comes from "local_paths.R" (untracked; copy
+# `ppdb_export_file` - the PPDB export, as the zip archive AERU delivers or
+# the workbook it holds; a zip is read without being unpacked in place
+# (extract_ppdb_workbook()) - comes from "local_paths.R" (untracked; copy
 # "local_paths.example.R"), which is read here and must define it. A
-# missing file, a missing setting or a folder that does not exist each stop
-# the run with an explicit message; the folder in use is echoed to the
-# console. See load_local_paths() in "HPLI import.R", and the note there on
-# adapting the column maps to an export more recent than the 2024-05-03 one
-# this code was written against.
-load_local_paths(require_dirs = "ppdb_export_dir")
+# missing file, a missing setting or a file that does not exist each stop
+# the run with an explicit message; the file in use is echoed to the
+# console. See load_local_paths() in
+# "HPLI import.R", and the note there on adapting the column maps to an
+# export more recent than the 2024-05-03 one this code was written against.
+# The export's date is read from the file name, or from the optional
+# `ppdb_export_date` of "local_paths.R" (resolve_ppdb_export_date()).
+load_local_paths(require_files = "ppdb_export_file", optional_settings = "ppdb_export_date")
+ppdb_workbook    <- extract_ppdb_workbook(ppdb_export_file)
+ppdb_export_date <- resolve_ppdb_export_date(ppdb_workbook, get0("ppdb_export_date", envir = globalenv()))
 
 # Two workbooks per run. output_file is publishable: HPLI, compartment
 # scores and data quality, no per-metric score. full_output_file holds
@@ -156,14 +165,19 @@ synthetic_only <- FALSE
 a_soil  <- 180
 a_water <- 7
 
-# Where each metric's weight comes from. "table1" uses the published
-# values hardcoded in "HPLI parameters.R". "spearman_ppdb" loads
-# weights_file, the output of "HPLI weights.R". The loaded file is checked
-# against the active metric list before use and refused on any mismatch, and
-# its provenance is carried into Run_log, so a weights file computed for a
-# different HPLI version cannot be applied silently.
-weight_source <- "table1"
-weights_file  <- "HPLI_weights.xlsx"
+# Where each metric's weight comes from.
+# "weights_file" (default) loads weights computed by "HPLI weights.R":
+#   weights_file, its output, if it exists - i.e. if you computed weights
+#   from your own export - else weights_file_precomputed, the file shipped
+#   with the code, computed on the PPDB export of 2024-05-03. The file used
+#   is checked against the active metric list and refused on any mismatch;
+#   a PPDB export date differing from this run's raises a warning; and its
+#   name and run log are carried into Run_log.
+# "table1" uses the weights published in table 1 of Vandevoorde et al.
+#   (2025), hardcoded in "HPLI parameters.R".
+weight_source            <- "weights_file"
+weights_file             <- "HPLI_weights.xlsx"
+weights_file_precomputed <- "HPLI_weights_precomputed.xlsx"
 
 # TRUE adds every substance's raw and completed PPDB values to the
 # "HPLI_results" sheet of full_output_file; FALSE leaves them out. It never
@@ -191,16 +205,21 @@ data_quality_scope <- "computable_only"
 # unconditionally: a run on the hardcoded weights simply adds no rows.
 weights_meta <- tibble(setting = character(0), value = character(0))
 
-if (weight_source == "spearman_ppdb") {
-  if (!file.exists(weights_file)) {
+if (weight_source == "weights_file") {
+  weights_used <- if (file.exists(weights_file)) weights_file else weights_file_precomputed
+  if (!file.exists(weights_used)) {
     stop(
-      "weight_source is \"spearman_ppdb\" but '", weights_file, "' does not exist - ",
-      "run \"HPLI weights.R\" first, or set weight_source back to \"table1\".",
+      "weight_source is \"weights_file\" but neither '", weights_file, "' nor '",
+      weights_file_precomputed, "' exists - run \"HPLI weights.R\", or set weight_source ",
+      "to \"table1\".",
       call. = FALSE
     )
   }
-  computed_weights <- read_excel(weights_file, sheet = "Weights")
-  weights_meta      <- read_excel(weights_file, sheet = "Run_log")
+  computed_weights <- read_excel(weights_used, sheet = "Weights")
+  weights_meta <- bind_rows(
+    tibble(setting = "file", value = basename(weights_used)),
+    read_excel(weights_used, sheet = "Run_log")
+  )
 
   # The weights file must cover exactly the metrics this version defines,
   # same names and same count, or it is refused: a file computed for
@@ -209,11 +228,11 @@ if (weight_source == "spearman_ppdb") {
   found_metrics    <- sort(computed_weights$metric)
   if (!identical(expected_metrics, found_metrics)) {
     stop(
-      "weight_source is \"spearman_ppdb\" but '", weights_file, "' does not match the current ",
-      "indicator definition. Expected ", length(expected_metrics), " metrics (",
-      paste(expected_metrics, collapse = ", "), "); found ", length(found_metrics), " (",
-      paste(found_metrics, collapse = ", "), "). Re-run \"HPLI weights.R\" against the current ",
-      "\"HPLI parameters.R\", or set weight_source back to \"table1\".",
+      "'", weights_used, "' does not match the current indicator definition. Expected ",
+      length(expected_metrics), " metrics (", paste(expected_metrics, collapse = ", "), "); found ",
+      length(found_metrics), " (", paste(found_metrics, collapse = ", "), "). Re-run ",
+      "\"HPLI weights.R\" against the current \"HPLI parameters.R\", or set weight_source ",
+      "to \"table1\".",
       call. = FALSE
     )
   }
@@ -222,18 +241,39 @@ if (weight_source == "spearman_ppdb") {
     select(-weight) |>
     left_join(computed_weights |> select(metric, weight), by = "metric")
 
+  # Weights computed on another PPDB version remain usable, but not
+  # silently. The date is compared, not the checksum: opening a workbook in
+  # a spreadsheet program can re-save it, changing its checksum but not its
+  # content.
+  weights_date <- weights_meta$value[weights_meta$setting == "ppdb_export_date"]
+  if (length(weights_date) == 0) {
+    warning(
+      "'", weights_used, "' does not record the date of the PPDB export its weights were ",
+      "computed on, so it cannot be checked against this run's export (", ppdb_export_date,
+      "). Re-run \"HPLI weights.R\" to regenerate it.",
+      call. = FALSE
+    )
+  } else if (weights_date != format(ppdb_export_date)) {
+    warning(
+      "The weights in '", weights_used, "' were computed on the PPDB export of ", weights_date,
+      ", but this run scores the export of ", ppdb_export_date, ". Run \"HPLI weights.R\" ",
+      "on this export for weights consistent with it.",
+      call. = FALSE
+    )
+  }
+
   # Full provenance rather than just a timestamp, so a stale or
   # unexpectedly scoped weights file shows up at a glance.
-  message("Loaded weights from '", weights_file, "':")
-  for (i in seq_len(nrow(weights_meta))) {
+  message("Loaded weights from '", weights_used, "':")
+  for (i in seq_len(nrow(weights_meta))[-1]) {
     message("  ", weights_meta$setting[i], ": ", weights_meta$value[i])
   }
 } else if (weight_source != "table1") {
-  stop('weight_source must be "table1" or "spearman_ppdb".', call. = FALSE)
+  stop('weight_source must be "weights_file" or "table1".', call. = FALSE)
 }
 
 raw_metrics <- load_ppdb_raw_metrics(
-  ppdb_export_dir = ppdb_export_dir,
+  ppdb_workbook = ppdb_workbook,
   range_policy = range_policy,
   synthetic_only = synthetic_only
 )
@@ -537,23 +577,23 @@ results_published <- results_main |>
 # 9. Export                                                              ####
 # ──────────────────────────────────────────────────────────────────────────
 
-# No local path: the export is identified by its folder name and the
-# checksums of its four workbooks (compute_ppdb_fingerprint(),
-# "HPLI import.R"), and the output files by name only. weights_meta (empty
-# under weight_source "table1") is prefixed "weights_" and appended, so a
-# loaded weights file's full provenance is recorded in this run's own
-# output and not only in the console.
+# No local path: the export is identified by its file name, date and
+# checksum (compute_ppdb_fingerprint(), "HPLI import.R"), and the output
+# files by name only. weights_meta (empty under weight_source "table1") is
+# prefixed "weights_" and appended, so the name of the weights file used
+# and its full provenance are recorded in this run's own output and not
+# only in the console.
 log_summary <- bind_rows(
   tibble(
     setting = c("run_timestamp", "output_file", "full_output_file"),
     value   = c(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), basename(output_file), basename(full_output_file))
   ),
-  compute_ppdb_fingerprint(ppdb_export_dir),
+  compute_ppdb_fingerprint(ppdb_workbook, ppdb_export_date),
   tibble(
-    setting = c("missing_policy", "range_policy",
+    setting = c("missing_policy", "range_policy", "synthetic_only",
                 "coverage_threshold", "weight_source", "export_raw_ppdb_values", "data_quality_scope",
                 "n_rows", "n_calculated", "n_not_calculated"),
-    value = c(missing_policy, range_policy, as.character(coverage_threshold),
+    value = c(missing_policy, range_policy, as.character(synthetic_only), as.character(coverage_threshold),
               weight_source, as.character(export_raw_ppdb_values), data_quality_scope,
               as.character(nrow(results_main)), as.character(sum(results_main$can_calculate)), as.character(sum(!results_main$can_calculate)))
   ),

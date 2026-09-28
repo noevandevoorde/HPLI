@@ -6,7 +6,7 @@
 #' HPLI-EU indicator definition
 #'
 #' Defines what the indicator is - its metrics, their normalisation
-#' thresholds, their compartments and their default weights - as opposed to
+#' thresholds, their compartments and their published weights - as opposed to
 #' how a substance is scored against it ("HPLI score.R") or how its metrics
 #' are read out of a PPDB export ("HPLI import.R"). Sourced by both, and
 #' close to data-only by design.
@@ -19,7 +19,7 @@
 #' * `hpli_thresholds` - normalisation thresholds, one row per level, one
 #'   column per numeric metric.
 #' * `hpli_parameters` - one row per metric: name, type, compartment,
-#'   default weight.
+#'   published table-1 weight.
 #' * `metric_cols` - the metric names, in definition order.
 #' * `compartment_weights` - each compartment's fixed share of the total.
 #' * `hazard_breakpoints` - `hpli_thresholds` reshaped into the (x, y)
@@ -75,11 +75,12 @@ hpli_thresholds <- tribble(
 #'   * `weight` - the metric's share of the whole indicator, summing to 1
 #'     over all rows.
 #' @details
-#' `weight` holds the published table-1 weights, renormalised to sum to
-#' exactly 1 (the published percentages are rounded, and sum to about
-#' 100.2%). "HPLI score.R" can replace them at run time with weights
-#' recomputed from the PPDB by "HPLI weights.R", which both computes over
-#' this table's metric list and is checked against it when its output is
+#' `weight` holds the published table-1 weights, as printed, renormalised
+#' to sum to exactly 1 (the published percentages are rounded, and sum to
+#' about 100.2%). They are not the default: "HPLI score.R" replaces them at
+#' run time with the weights computed from the PPDB by "HPLI weights.R",
+#' and uses these only when its `weight_source` is "table1". A weights file
+#' is computed over this table's metric list and checked against it when
 #' loaded back in.
 #'
 #' This table is also what makes the file swappable: changing the metric
